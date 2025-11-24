@@ -59,8 +59,8 @@ app.post('/api/encode', upload.fields([
 
     // Call your C++ executable
     // Adjust the command based on your C++ program's interface
-    // Format: ./stego encode <cover_image> <secret_file> <output_image>
-    const command = `./stego encode "${coverImage}" "${secretFile}" "${outputImage}"`;
+    // Format: stego.exe encode <cover_image> <secret_file> <output_image>
+    const command = `stego.exe encode "${coverImage}" "${secretFile}" "${outputImage}"`;
 
     exec(command, (error, stdout, stderr) => {
       // Clean up uploaded files
@@ -114,8 +114,8 @@ app.post('/api/decode', upload.single('stegoImage'), (req, res) => {
     console.log('Decoding file:', { stegoImage, outputFile });
 
     // Call your C++ executable
-    // Format: ./stego decode <stego_image> <output_file>
-    const command = `./stego decode "${stegoImage}" "${outputFile}"`;
+    // Format: stego.exe decode <stego_image> <output_file>
+    const command = `stego.exe decode "${stegoImage}" "${outputFile}"`;
 
     exec(command, (error, stdout, stderr) => {
       // Clean up uploaded file

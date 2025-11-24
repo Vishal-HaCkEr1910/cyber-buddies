@@ -65,7 +65,7 @@ function hideResult() {
 
 function showError(message) {
   document.getElementById('errorMessage').textContent = message;
-  document.getElementById('error').classList.add('hidden');
+  document.getElementById('error').classList.remove('hidden');
 }
 
 function hideError() {

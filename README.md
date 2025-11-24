@@ -1,21 +1,54 @@
-# StegoProto - Steganography Web Interface
+# 🔐 StegoProto - Steganography Web Interface
 
-A web-based steganography application that hides secret files inside images using C++ backend processing.
+A full-stack web-based steganography application that hides secret files inside images using C++ backend processing.
 
-## 🚀 Setup Instructions
+## ✨ Features
+
+- 🎯 **Universal File Support** - Hide ANY file type in ANY image
+- � **Secure Encoding** - Advanced steganography with data integrity checking
+- 🔓 **Easy Extraction** - Simple decode process to retrieve hidden files
+- 🌐 **Modern Web Interface** - Clean, intuitive UI built with HTML/CSS/JavaScript
+- ⚡ **Fast Processing** - Efficient C++ backend for quick operations
+- 📊 **File Validation** - Automatic size checking and capacity management
+
+## �🚀 Quick Setup (Automated)
+
+### For Windows Users:
+
+1. **Run the setup script:**
+
+   ```powershell
+   .\setup.bat
+   ```
+
+2. **Start the server:**
+
+   ```powershell
+   npm start
+   ```
+
+3. **Open your browser:**
+   ```
+   http://localhost:3000
+   ```
+
+That's it! 🎉
+
+---
+
+## 📋 Manual Setup Instructions
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
-- npm (comes with Node.js)
-- C++ compiler (g++ or clang++)
-- Your C++ steganography code compiled as an executable
+- **Node.js** (v14 or higher) - [Download](https://nodejs.org/)
+- **npm** (comes with Node.js)
+- **C++ compiler** (g++ or clang++) - [Download MinGW](https://winlibs.com/)
 
-### Step 1: Install Dependencies
+### Step 1: Install Node.js Dependencies
 
-Open terminal in the project directory and run:
+Open PowerShell in the project directory and run:
 
-```bash
+```powershell
 npm install
 ```
 
@@ -24,61 +57,41 @@ This will install:
 - `express` - Web server framework
 - `multer` - File upload handling
 
-### Step 2: Compile Your C++ Code
+### Step 2: Compile C++ Program
 
-You need to compile your `project_new.cpp` (or your C++ steganography code) into an executable named `stego`.
+Compile the command-line version of the steganography program:
 
-#### On Linux/Mac:
-
-```bash
-g++ -o stego project_new.cpp -std=c++11
+```powershell
+g++ -o stego.exe stego_cli.cpp -std=c++11
 ```
 
-#### On Windows:
+**Note:** Use `stego_cli.cpp` (command-line interface) for the web server, not `stego.cpp` (interactive menu).
 
-```bash
-g++ -o stego.exe project_new.cpp -std=c++11
+### Step 3: Test the C++ Program (Optional)
+
+Run the test script:
+
+```powershell
+.\test.bat
 ```
 
-**Important:** Your C++ program should accept command-line arguments in this format:
+Or test manually:
 
-**For Encoding:**
+```powershell
+# Encode
+.\stego.exe encode cover.png secret.txt output_stego.png
 
-```bash
-./stego encode <cover_image_path> <secret_file_path> <output_image_path>
+# Decode
+.\stego.exe decode output_stego.png extracted_secret.txt
 ```
 
-**For Decoding:**
+### Step 4: Start the Web Server
 
-```bash
-./stego decode <stego_image_path> <output_file_path>
-```
-
-### Step 3: Adjust Server Configuration (if needed)
-
-If your C++ executable has a different command format, edit `server.js`:
-
-**Line 60-61** (Encode command):
-
-```javascript
-const command = `./stego encode "${coverImage}" "${secretFile}" "${outputImage}"`;
-```
-
-**Line 116** (Decode command):
-
-```javascript
-const command = `./stego decode "${stegoImage}" "${outputFile}"`;
-```
-
-### Step 4: Run the Server
-
-```bash
+```powershell
+# Production mode
 npm start
-```
 
-Or for development with auto-restart:
-
-```bash
+# OR Development mode (auto-restart on changes)
 npm run dev
 ```
 
@@ -92,90 +105,200 @@ Navigate to:
 http://localhost:3000
 ```
 
-## 📁 Project Structure
+## 📁 Complete Project Structure
 
 ```
-Steganography/
-├── server.js           # Backend Node.js server
-├── package.json        # Node.js dependencies
-├── index.html          # Home page
-├── encode.html         # Encode page
-├── decode.html         # Decode page
-├── encode.js           # Encode page logic
-├── decode.js           # Decode page logic
-├── style.css           # Styling
-├── stego               # Your compiled C++ executable
-├── project_new.cpp     # Your C++ source code
-├── uploads/            # Temporary file uploads (auto-created)
-└── output/             # Processed files (auto-created)
+cyber-buddies/
+├── 📄 index.html              # Home page with project info
+├── 📄 encode.html             # Encode/Hide file interface
+├── 📄 decode.html             # Decode/Extract file interface
+├── 📄 style.css               # Modern UI styling
+├── 📄 encode.js               # Frontend logic for encoding
+├── 📄 decode.js               # Frontend logic for decoding
+├── 📄 server.js               # Backend Express server
+├── 📄 package.json            # Node.js dependencies
+├── 📄 stego.cpp               # Original C++ with interactive menu
+├── 📄 stego_cli.cpp           # CLI version for web server ⭐
+├── 🔧 stego.exe               # Compiled C++ executable
+├── 📖 README.md               # This file
+├── 📖 INTEGRATION_GUIDE.md    # Detailed integration guide
+├── 🔧 setup.bat               # Automated setup script
+├── 🔧 test.bat                # Testing script
+├── 📁 uploads/                # Temporary uploaded files (auto-created)
+└── 📁 output/                 # Generated stego files (auto-created)
 ```
+
+## 🎯 How to Use
+
+### Encoding (Hiding a File):
+
+1. Navigate to **Home** → Click "**Encode File**"
+2. **Select Cover Image**: Choose an image file (PNG, JPG, BMP)
+3. **Select Secret File**: Choose any file you want to hide
+4. Click "**🔒 Embed Secret File**"
+5. **Download** the generated stego image
+
+### Decoding (Extracting Hidden File):
+
+1. Navigate to **Home** → Click "**Decode File**"
+2. **Select Stego Image**: Upload the image containing hidden data
+3. (Optional) Specify output filename
+4. Click "**🔓 Extract & Download**"
+5. **Download** the extracted secret file
 
 ## 🔧 Troubleshooting
 
-### Error: "Cannot find module 'express'"
+### ❌ Error: "Cannot find module 'express'"
 
-Run: `npm install`
+**Solution:**
 
-### Error: "Encoding/Decoding failed"
+```powershell
+npm install
+```
 
-- Check if your C++ executable is in the project root directory
-- Verify the executable name matches what's in `server.js`
-- Test your C++ program manually with command-line arguments
-- Check the terminal for detailed error messages
+### ❌ Error: "stego.exe not found" or "Encoding/Decoding failed"
 
-### Error: "EACCES: permission denied"
+**Solutions:**
 
-On Linux/Mac, make your executable runnable:
+- Check if `stego.exe` is in the project root directory
+- Recompile the C++ program:
+  ```powershell
+  g++ -o stego.exe stego_cli.cpp -std=c++11
+  ```
+- Test the executable manually:
+  ```powershell
+  .\stego.exe encode test.png secret.txt output.png
+  ```
+
+### ❌ Error: "File too large to hide"
+
+**Solution:** The hidden file can only be up to **85%** of the cover image size. Use a larger cover image or smaller secret file.
+
+### ❌ Error: "No hidden data found in file"
+
+**Solution:** The uploaded image was not created with this program. Make sure to use a properly encoded stego image.
+
+### ❌ Port 3000 already in use
+
+**Solution:** Change the PORT in `server.js`:
+
+```javascript
+const PORT = 3001; // Change to any available port
+```
+
+### ❌ Error: "Permission denied" (Linux/Mac)
+
+**Solution:** Make the executable runnable:
 
 ```bash
 chmod +x stego
 ```
 
-### Port 3000 already in use
+## 🧪 Testing
 
-Change the PORT in `server.js` (line 8):
+### Automated Testing:
 
-```javascript
-const PORT = 8080; // or any other available port
+```powershell
+.\test.bat
 ```
 
-## 🧪 Testing Your C++ Executable
+### Manual Testing:
 
-Before running the server, test your C++ program manually:
+```powershell
+# 1. Test C++ program
+.\stego.exe encode cover.png secret.txt stego_output.png
+.\stego.exe decode stego_output.png extracted.txt
 
-```bash
-# Test encoding
-./stego encode test_image.png secret.txt output.png
+# 2. Start server
+npm start
 
-# Test decoding
-./stego decode output.png extracted.txt
+# 3. Test in browser
+# Open http://localhost:3000 and test encode/decode
 ```
 
-## 📝 C++ Program Requirements
+## 📝 Technical Details
 
-Your C++ program should:
+### C++ Program Features:
 
-1. Accept command-line arguments for file paths
-2. Return exit code 0 on success
-3. Print error messages to stderr on failure
-4. Support common image formats (PNG, BMP, JPG)
+- ✅ **Universal file support** - Works with any file type
+- ✅ **Magic signature** - 0x5354454E for file identification
+- ✅ **Data integrity** - Checksum validation
+- ✅ **Filename preservation** - Original filename stored in header
+- ✅ **Size validation** - Automatic capacity checking
+- ✅ **Error handling** - Comprehensive exception handling
 
-## 🎯 Usage
+### API Endpoints:
 
-1. **Home Page**: Overview and team information
-2. **Encode Page**: Upload a cover image and secret file
-3. **Decode Page**: Upload a stego image to extract hidden data
-4. Click "Download" to get your processed files
+**POST `/api/encode`**
+
+- Input: `coverImage`, `secretFile` (multipart/form-data)
+- Output: JSON with download link
+
+**POST `/api/decode`**
+
+- Input: `stegoImage`, `outputName` (optional)
+- Output: JSON with download link
+
+**GET `/api/download/:filename`**
+
+- Input: filename in URL
+- Output: File download
+
+### Size Limits:
+
+- **Minimum cover image**: 10 KB
+- **Maximum hidden file**: 85% of cover image size
+- **Upload limit**: 50 MB per file
+
+## 🔒 Security Notes
+
+⚠️ **Important**: This is a **prototype/educational project**
+
+- Steganography ≠ Encryption (files are hidden, not encrypted)
+- For production use, add:
+  - Authentication & authorization
+  - File encryption before hiding
+  - HTTPS/TLS
+  - Rate limiting
+  - Enhanced validation
+
+## 📚 Additional Resources
+
+- **INTEGRATION_GUIDE.md** - Detailed integration instructions
+- **stego.cpp** - Original C++ with interactive menu
+- **stego_cli.cpp** - Command-line version for web server
+
+## 🚀 Future Enhancements
+
+- [ ] Password protection for hidden files
+- [ ] Multiple file hiding
+- [ ] Progress bars for large files
+- [ ] Drag & drop file upload
+- [ ] File preview before download
+- [ ] Video steganography support
 
 ## 👥 Team
 
-- Vishal Yadav
-- Aryan Sheoran
-- Keshav Sethi
+- **Vishal Yadav** - vishal@gmail.com
+- **Aryan Sheoran** - aryan@gmail.com
+- **Keshav Sethi** - keshav@gmail.com
 
-## 🏫 Institution
+**Institution**: IIITU
 
-IIITU
+## 📄 License
+
+MIT License - Educational Project
+
+---
+
+## 💡 Need Help?
+
+1. Check **INTEGRATION_GUIDE.md** for detailed instructions
+2. Run `.\test.bat` to verify your setup
+3. Check server console for error messages
+4. Ensure all prerequisites are installed
+
+**Happy Steganography! 🎉**
 
 ---
 

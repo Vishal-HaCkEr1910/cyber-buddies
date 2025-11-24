@@ -4,521 +4,720 @@
 #include <string>
 #include <cstring>
 #include <stdexcept>
-#include <bitset>
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
+#include <sys/stat.h>
 
 using namespace std;
 
 // ============================================================================
-// Base Exception Class for Steganography Errors
+// CONFIGURATION CONSTANTS
+// ============================================================================
+namespace Config {
+    // Maximum percentage of host file that can be used for hidden data
+    const double MAX_HIDDEN_SIZE_RATIO = 0.85;  // 85% of host file size
+    
+    // Minimum host file size (10 KB)
+    const size_t MIN_HOST_SIZE = 10240;
+    
+    // Magic signature for identifying steganography files
+    const uint32_t MAGIC_SIGNATURE = 0x5354454E;  // "STEN" in hex
+    
+    // Version number for compatibility
+    const uint16_t VERSION = 0x0001;
+    
+    // Maximum filename length
+    const size_t MAX_FILENAME_LENGTH = 256;
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+namespace Utils {
+    /**
+     * Gets file size in bytes
+     * @param filename Path to file
+     * @return File size or 0 if error
+     */
+    size_t getFileSize(const string& filename) {
+        struct stat stat_buf;
+        int rc = stat(filename.c_str(), &stat_buf);
+        return rc == 0 ? stat_buf.st_size : 0;
+    }
+    
+    /**
+     * Checks if file exists and is readable
+     * @param filename Path to file
+     * @return true if file exists and is readable
+     */
+    bool fileExists(const string& filename) {
+        ifstream file(filename, ios::binary);
+        return file.good();
+    }
+    
+    /**
+     * Formats bytes into human-readable format
+     * @param bytes Number of bytes
+     * @return Formatted string (e.g., "1.5 MB")
+     */
+    string formatBytes(size_t bytes) {
+        const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+        int unitIndex = 0;
+        double size = static_cast<double>(bytes);
+        
+        while (size >= 1024.0 && unitIndex < 4) {
+            size /= 1024.0;
+            unitIndex++;
+        }
+        
+        ostringstream oss;
+        oss << fixed << setprecision(2) << size << " " << units[unitIndex];
+        return oss.str();
+    }
+    
+    /**
+     * Extracts filename from full path
+     * @param fullPath Full file path
+     * @return Filename only
+     */
+    string extractFilename(const string& fullPath) {
+        size_t pos = fullPath.find_last_of("/\\");
+        return (pos == string::npos) ? fullPath : fullPath.substr(pos + 1);
+    }
+    
+    /**
+     * Gets file extension
+     * @param filename File name or path
+     * @return Extension in lowercase
+     */
+    string getExtension(const string& filename) {
+        size_t pos = filename.find_last_of('.');
+        if (pos == string::npos) return "";
+        
+        string ext = filename.substr(pos);
+        transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        return ext;
+    }
+}
+
+// ============================================================================
+// CUSTOM EXCEPTION CLASSES
 // ============================================================================
 class SteganographyException : public runtime_error {
 public:
-    explicit SteganographyException(const string& msg) : runtime_error(msg) {}
+    explicit SteganographyException(const string& msg) 
+        : runtime_error(msg) {}
+};
+
+class FileSizeException : public SteganographyException {
+public:
+    explicit FileSizeException(const string& msg) 
+        : SteganographyException(msg) {}
+};
+
+class FileAccessException : public SteganographyException {
+public:
+    explicit FileAccessException(const string& msg) 
+        : SteganographyException(msg) {}
+};
+
+class InvalidFormatException : public SteganographyException {
+public:
+    explicit InvalidFormatException(const string& msg) 
+        : SteganographyException(msg) {}
 };
 
 // ============================================================================
-// Utility Class for File Operations
+// FILE HEADER STRUCTURE
 // ============================================================================
-class FileUtils {
+struct StegoHeader {
+    uint32_t magic;           // Magic signature for validation
+    uint16_t version;         // Version number
+    uint32_t hiddenFileSize;  // Size of hidden file
+    uint16_t filenameLength;  // Length of original filename
+    char filename[Config::MAX_FILENAME_LENGTH];  // Original filename
+    uint32_t checksum;        // Simple checksum for integrity
+    
+    StegoHeader() : magic(Config::MAGIC_SIGNATURE), 
+                    version(Config::VERSION),
+                    hiddenFileSize(0),
+                    filenameLength(0),
+                    checksum(0) {
+        memset(filename, 0, Config::MAX_FILENAME_LENGTH);
+    }
+    
+    /**
+     * Calculates simple checksum for validation
+     * @return Checksum value
+     */
+    uint32_t calculateChecksum() const {
+        uint32_t sum = magic + version + hiddenFileSize + filenameLength;
+        for (size_t i = 0; i < filenameLength && i < Config::MAX_FILENAME_LENGTH; i++) {
+            sum += static_cast<unsigned char>(filename[i]);
+        }
+        return sum;
+    }
+    
+    /**
+     * Validates header integrity
+     * @return true if valid
+     */
+    bool validate() const {
+        return magic == Config::MAGIC_SIGNATURE && 
+               checksum == calculateChecksum();
+    }
+};
+
+// ============================================================================
+// FILE VALIDATOR CLASS
+// ============================================================================
+class FileValidator {
 public:
     /**
-     * Reads entire file into a byte vector
-     * @param filename Path to the file
-     * @return Vector containing file bytes
+     * Validates that file exists and is accessible
+     * @param filename Path to file
+     * @param fileType Description of file type (for error messages)
+     */
+    static void validateFileAccess(const string& filename, const string& fileType) {
+        if (filename.empty()) {
+            throw FileAccessException(fileType + " path cannot be empty");
+        }
+        
+        if (!Utils::fileExists(filename)) {
+            throw FileAccessException(fileType + " not found or not accessible: " + filename);
+        }
+    }
+    
+    /**
+     * Validates file sizes and calculates allowed hidden size
+     * @param hiddenSize Size of file to hide
+     * @param hostSize Size of host file
+     * @return Maximum allowed size for hidden file
+     */
+    static size_t validateAndCalculateMaxSize(size_t hiddenSize, size_t hostSize) {
+        // Check minimum host size
+        if (hostSize < Config::MIN_HOST_SIZE) {
+            throw FileSizeException(
+                "Host file too small. Minimum size: " + 
+                Utils::formatBytes(Config::MIN_HOST_SIZE)
+            );
+        }
+        
+        // Calculate maximum allowed hidden size
+        size_t maxHiddenSize = static_cast<size_t>(
+            hostSize * Config::MAX_HIDDEN_SIZE_RATIO
+        );
+        
+        // Account for header size
+        size_t headerSize = sizeof(StegoHeader);
+        if (maxHiddenSize < headerSize) {
+            throw FileSizeException("Host file too small to hide any data");
+        }
+        
+        maxHiddenSize -= headerSize;
+        
+        // Check if hidden file fits
+        if (hiddenSize > maxHiddenSize) {
+            throw FileSizeException(
+                "The file to hide exceeds the allowable size.\n" +
+                string("  File size: ") + Utils::formatBytes(hiddenSize) + "\n" +
+                string("  Maximum allowed: ") + Utils::formatBytes(maxHiddenSize) + "\n" +
+                string("  Please choose a smaller file or a larger host file.")
+            );
+        }
+        
+        return maxHiddenSize;
+    }
+};
+
+// ============================================================================
+// FILE IO MANAGER CLASS
+// ============================================================================
+class FileIOManager {
+public:
+    /**
+     * Reads entire file into memory
+     * @param filename Path to file
+     * @return Vector containing file data
      */
     static vector<unsigned char> readFile(const string& filename) {
         ifstream file(filename, ios::binary);
         if (!file.is_open()) {
-            throw SteganographyException("Cannot open file: " + filename);
+            throw FileAccessException("Cannot open file for reading: " + filename);
         }
         
+        // Get file size
         file.seekg(0, ios::end);
-        size_t fileSize = file.tellg();
+        size_t size = file.tellg();
         file.seekg(0, ios::beg);
         
-        vector<unsigned char> buffer(fileSize);
-        file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-        file.close();
+        // Read file data
+        vector<unsigned char> data(size);
+        file.read(reinterpret_cast<char*>(data.data()), size);
         
-        return buffer;
+        if (!file) {
+            throw FileAccessException("Error reading file: " + filename);
+        }
+        
+        file.close();
+        return data;
     }
     
     /**
-     * Writes byte vector to file
+     * Writes data to file
      * @param filename Output file path
-     * @param data Byte vector to write
+     * @param data Data to write
      */
     static void writeFile(const string& filename, const vector<unsigned char>& data) {
         ofstream file(filename, ios::binary);
         if (!file.is_open()) {
-            throw SteganographyException("Cannot create file: " + filename);
+            throw FileAccessException("Cannot create output file: " + filename);
         }
         
         file.write(reinterpret_cast<const char*>(data.data()), data.size());
+        
+        if (!file) {
+            throw FileAccessException("Error writing to file: " + filename);
+        }
+        
         file.close();
     }
     
     /**
-     * Extracts file extension
-     * @param filename File path
-     * @return Extension in lowercase
+     * Reads file in chunks for memory efficiency
+     * @param filename Path to file
+     * @param buffer Buffer to store data
+     * @param offset Offset to start reading
+     * @param size Number of bytes to read
+     * @return Number of bytes actually read
      */
-    static string getExtension(const string& filename) {
-        size_t pos = filename.find_last_of('.');
-        if (pos == string::npos) return "";
+    static size_t readFileChunk(const string& filename, vector<unsigned char>& buffer,
+                                size_t offset, size_t size) {
+        ifstream file(filename, ios::binary);
+        if (!file.is_open()) {
+            throw FileAccessException("Cannot open file for reading: " + filename);
+        }
         
-        string ext = filename.substr(pos + 1);
-        transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-        return ext;
+        file.seekg(offset, ios::beg);
+        buffer.resize(size);
+        file.read(reinterpret_cast<char*>(buffer.data()), size);
+        
+        return file.gcount();
     }
 };
 
 // ============================================================================
-// Base Steganography Interface
+// STEGANOGRAPHY ENGINE CLASS
 // ============================================================================
-class ISteganography {
-public:
-    virtual ~ISteganography() = default;
-    virtual void hideData(const vector<unsigned char>& data, 
-                         const string& containerFile, 
-                         const string& outputFile) = 0;
-    virtual vector<unsigned char> revealData(const string& containerFile) = 0;
-};
-
-// ============================================================================
-// Image Steganography (LSB Method for BMP images)
-// ============================================================================
-class ImageSteganography : public ISteganography {
+class UniversalSteganography {
 private:
-    static const uint32_t SIGNATURE = 0x53544547; // "STEG" in hex
+    string hiddenFilePath;
+    string hostFilePath;
+    string outputFilePath;
     
     /**
-     * Validates BMP file format
-     * @param imageData BMP file data
-     * @return true if valid BMP
+     * Creates steganography header
+     * @param hiddenFilename Original filename
+     * @param hiddenSize Size of hidden file
+     * @return Populated header structure
      */
-    bool isValidBMP(const vector<unsigned char>& imageData) {
-        if (imageData.size() < 54) return false;
-        return imageData[0] == 'B' && imageData[1] == 'M';
+    StegoHeader createHeader(const string& hiddenFilename, size_t hiddenSize) {
+        StegoHeader header;
+        header.hiddenFileSize = static_cast<uint32_t>(hiddenSize);
+        
+        string filename = Utils::extractFilename(hiddenFilename);
+        header.filenameLength = min(filename.length(), 
+                                    static_cast<size_t>(Config::MAX_FILENAME_LENGTH - 1));
+        
+        strncpy(header.filename, filename.c_str(), header.filenameLength);
+        header.filename[header.filenameLength] = '\0';
+        
+        header.checksum = header.calculateChecksum();
+        
+        return header;
     }
     
     /**
-     * Gets pixel data offset in BMP file
-     * @param imageData BMP file data
-     * @return Offset to pixel data
+     * Serializes header to byte vector
+     * @param header Header structure
+     * @return Byte vector containing header
      */
-    size_t getPixelDataOffset(const vector<unsigned char>& imageData) {
-        return imageData[10] | (imageData[11] << 8) | 
-               (imageData[12] << 16) | (imageData[13] << 24);
+    vector<unsigned char> serializeHeader(const StegoHeader& header) {
+        vector<unsigned char> buffer(sizeof(StegoHeader));
+        memcpy(buffer.data(), &header, sizeof(StegoHeader));
+        return buffer;
     }
     
     /**
-     * Embeds one bit into a byte using LSB
-     * @param carrier Byte to modify
-     * @param bit Bit to embed (0 or 1)
-     * @return Modified byte
+     * Deserializes header from byte vector
+     * @param buffer Byte vector containing header
+     * @return Header structure
      */
-    unsigned char embedBit(unsigned char carrier, int bit) {
-        return (carrier & 0xFE) | bit;
-    }
-    
-    /**
-     * Extracts LSB from a byte
-     * @param carrier Byte to extract from
-     * @return Extracted bit (0 or 1)
-     */
-    int extractBit(unsigned char carrier) {
-        return carrier & 0x01;
+    StegoHeader deserializeHeader(const vector<unsigned char>& buffer) {
+        if (buffer.size() < sizeof(StegoHeader)) {
+            throw InvalidFormatException("Invalid header size");
+        }
+        
+        StegoHeader header;
+        memcpy(&header, buffer.data(), sizeof(StegoHeader));
+        return header;
     }
 
 public:
     /**
-     * Hides data in BMP image using LSB steganography
-     * @param data Data to hide
-     * @param containerFile Path to BMP image
-     * @param outputFile Output file path
+     * Constructor
+     * @param hiddenFile Path to file to hide
+     * @param hostFile Path to host file
+     * @param outputFile Path for output file
      */
-    void hideData(const vector<unsigned char>& data, 
-                  const string& containerFile, 
-                  const string& outputFile) override {
-        vector<unsigned char> image = FileUtils::readFile(containerFile);
-        
-        if (!isValidBMP(image)) {
-            throw SteganographyException("Container must be a valid BMP image");
-        }
-        
-        size_t pixelOffset = getPixelDataOffset(image);
-        size_t availableBytes = (image.size() - pixelOffset) / 8;
-        size_t requiredBytes = data.size() + sizeof(uint32_t) + sizeof(uint32_t);
-        
-        if (requiredBytes > availableBytes) {
-            throw SteganographyException("Image too small to hide data. Need " + 
-                                        to_string(requiredBytes) + " bytes, have " + 
-                                        to_string(availableBytes));
-        }
-        
-        size_t bitIndex = 0;
-        
-        // Embed signature
-        for (int i = 31; i >= 0; i--) {
-            int bit = (SIGNATURE >> i) & 1;
-            image[pixelOffset + bitIndex] = embedBit(image[pixelOffset + bitIndex], bit);
-            bitIndex++;
-        }
-        
-        // Embed data size
-        uint32_t dataSize = data.size();
-        for (int i = 31; i >= 0; i--) {
-            int bit = (dataSize >> i) & 1;
-            image[pixelOffset + bitIndex] = embedBit(image[pixelOffset + bitIndex], bit);
-            bitIndex++;
-        }
-        
-        // Embed actual data
-        for (unsigned char byte : data) {
-            for (int i = 7; i >= 0; i--) {
-                int bit = (byte >> i) & 1;
-                image[pixelOffset + bitIndex] = embedBit(image[pixelOffset + bitIndex], bit);
-                bitIndex++;
-            }
-        }
-        
-        FileUtils::writeFile(outputFile, image);
-    }
+    UniversalSteganography(const string& hiddenFile, 
+                          const string& hostFile,
+                          const string& outputFile)
+        : hiddenFilePath(hiddenFile),
+          hostFilePath(hostFile),
+          outputFilePath(outputFile) {}
     
     /**
-     * Reveals hidden data from BMP image
-     * @param containerFile Path to BMP image with hidden data
-     * @return Extracted data
+     * Hides file within host file
      */
-    vector<unsigned char> revealData(const string& containerFile) override {
-        vector<unsigned char> image = FileUtils::readFile(containerFile);
+    void hideFile() {
+        cout << "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << endl;
+        cout << "  INITIATING FILE HIDING PROCESS" << endl;
+        cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" << endl;
         
-        if (!isValidBMP(image)) {
-            throw SteganographyException("File is not a valid BMP image");
-        }
+        // Step 1: Validate file access
+        cout << "[1/5] Validating file access..." << endl;
+        FileValidator::validateFileAccess(hiddenFilePath, "File to hide");
+        FileValidator::validateFileAccess(hostFilePath, "Host file");
+        cout << "      ✓ Files validated successfully\n" << endl;
         
-        size_t pixelOffset = getPixelDataOffset(image);
-        size_t bitIndex = 0;
+        // Step 2: Get file sizes
+        cout << "[2/5] Analyzing file sizes..." << endl;
+        size_t hiddenSize = Utils::getFileSize(hiddenFilePath);
+        size_t hostSize = Utils::getFileSize(hostFilePath);
         
-        // Extract and verify signature
-        uint32_t signature = 0;
-        for (int i = 0; i < 32; i++) {
-            signature = (signature << 1) | extractBit(image[pixelOffset + bitIndex]);
-            bitIndex++;
-        }
+        cout << "      • File to hide: " << Utils::formatBytes(hiddenSize) 
+             << " (" << Utils::extractFilename(hiddenFilePath) << ")" << endl;
+        cout << "      • Host file: " << Utils::formatBytes(hostSize)
+             << " (" << Utils::extractFilename(hostFilePath) << ")" << endl;
         
-        if (signature != SIGNATURE) {
-            throw SteganographyException("No hidden data found in image");
-        }
+        // Step 3: Validate size constraints
+        cout << "\n[3/5] Checking size constraints..." << endl;
+        size_t maxAllowed = FileValidator::validateAndCalculateMaxSize(hiddenSize, hostSize);
+        double utilizationPercent = (static_cast<double>(hiddenSize) / maxAllowed) * 100.0;
+        cout << "      ✓ Size check passed" << endl;
+        cout << "      • Capacity utilization: " << fixed << setprecision(1) 
+             << utilizationPercent << "%" << endl;
+        cout << "      • Remaining capacity: " 
+             << Utils::formatBytes(maxAllowed - hiddenSize) << "\n" << endl;
         
-        // Extract data size
-        uint32_t dataSize = 0;
-        for (int i = 0; i < 32; i++) {
-            dataSize = (dataSize << 1) | extractBit(image[pixelOffset + bitIndex]);
-            bitIndex++;
-        }
+        // Step 4: Read files
+        cout << "[4/5] Reading files..." << endl;
+        vector<unsigned char> hostData = FileIOManager::readFile(hostFilePath);
+        vector<unsigned char> hiddenData = FileIOManager::readFile(hiddenFilePath);
+        cout << "      ✓ Files loaded into memory\n" << endl;
         
-        if (dataSize == 0 || dataSize > image.size()) {
-            throw SteganographyException("Invalid data size detected");
-        }
+        // Step 5: Create output with embedded data
+        cout << "[5/5] Embedding hidden file..." << endl;
+        StegoHeader header = createHeader(hiddenFilePath, hiddenSize);
+        vector<unsigned char> headerData = serializeHeader(header);
         
-        // Extract actual data
-        vector<unsigned char> result(dataSize);
-        for (size_t i = 0; i < dataSize; i++) {
-            unsigned char byte = 0;
-            for (int j = 0; j < 8; j++) {
-                byte = (byte << 1) | extractBit(image[pixelOffset + bitIndex]);
-                bitIndex++;
-            }
-            result[i] = byte;
-        }
-        
-        return result;
-    }
-};
-
-// ============================================================================
-// Document Steganography (for PDF and DOCX using EOF appending)
-// ============================================================================
-class DocumentSteganography : public ISteganography {
-private:
-    static const uint32_t SIGNATURE = 0x44535447; // "DSTG" in hex
-    
-public:
-    /**
-     * Hides data in document by appending after EOF marker
-     * @param data Data to hide
-     * @param containerFile Path to PDF or DOCX file
-     * @param outputFile Output file path
-     */
-    void hideData(const vector<unsigned char>& data, 
-                  const string& containerFile, 
-                  const string& outputFile) override {
-        vector<unsigned char> document = FileUtils::readFile(containerFile);
-        
-        // Reserve space for signature and size
+        // Construct output: host + header + hidden
         vector<unsigned char> output;
-        output.reserve(document.size() + sizeof(uint32_t) * 2 + data.size());
+        output.reserve(hostData.size() + headerData.size() + hiddenData.size());
         
-        // Copy original document
-        output.insert(output.end(), document.begin(), document.end());
+        output.insert(output.end(), hostData.begin(), hostData.end());
+        output.insert(output.end(), headerData.begin(), headerData.end());
+        output.insert(output.end(), hiddenData.begin(), hiddenData.end());
         
-        // Append signature
-        for (int i = 3; i >= 0; i--) {
-            output.push_back((SIGNATURE >> (i * 8)) & 0xFF);
-        }
+        // Write output
+        FileIOManager::writeFile(outputFilePath, output);
         
-        // Append data size
-        uint32_t dataSize = data.size();
-        for (int i = 3; i >= 0; i--) {
-            output.push_back((dataSize >> (i * 8)) & 0xFF);
-        }
-        
-        // Append actual data
-        output.insert(output.end(), data.begin(), data.end());
-        
-        FileUtils::writeFile(outputFile, output);
+        cout << "      ✓ File embedded successfully" << endl;
+        cout << "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << endl;
+        cout << "  ✓ OPERATION COMPLETED SUCCESSFULLY" << endl;
+        cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" << endl;
+        cout << "Output file: " << outputFilePath << endl;
+        cout << "Total size: " << Utils::formatBytes(output.size()) << endl;
+        cout << "Hidden file: " << header.filename << " (" 
+             << Utils::formatBytes(hiddenSize) << ")" << endl;
     }
     
     /**
-     * Reveals hidden data from document
-     * @param containerFile Path to document with hidden data
-     * @return Extracted data
+     * Extracts hidden file from stego file
      */
-    vector<unsigned char> revealData(const string& containerFile) override {
-        vector<unsigned char> document = FileUtils::readFile(containerFile);
+    void extractFile() {
+        cout << "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << endl;
+        cout << "  INITIATING FILE EXTRACTION PROCESS" << endl;
+        cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" << endl;
         
-        if (document.size() < sizeof(uint32_t) * 2) {
-            throw SteganographyException("File too small to contain hidden data");
+        // Step 1: Validate file access
+        cout << "[1/4] Validating file access..." << endl;
+        FileValidator::validateFileAccess(hostFilePath, "Stego file");
+        cout << "      ✓ File validated\n" << endl;
+        
+        // Step 2: Read file
+        cout << "[2/4] Reading stego file..." << endl;
+        vector<unsigned char> data = FileIOManager::readFile(hostFilePath);
+        size_t fileSize = data.size();
+        cout << "      • File size: " << Utils::formatBytes(fileSize) << "\n" << endl;
+        
+        // Step 3: Extract and validate header
+        cout << "[3/4] Searching for hidden data..." << endl;
+        if (data.size() < sizeof(StegoHeader)) {
+            throw InvalidFormatException("File too small to contain hidden data");
         }
         
-        // Search for signature from end
-        size_t sigPos = document.size() - sizeof(uint32_t) * 2;
-        bool found = false;
+        // Header is located after original host file data
+        size_t headerOffset = data.size() - sizeof(StegoHeader);
         
-        // Search backwards for signature
-        for (size_t i = document.size() - sizeof(uint32_t) * 2; i > 0; i--) {
-            uint32_t sig = 0;
-            for (int j = 0; j < 4; j++) {
-                sig = (sig << 8) | document[i + j];
-            }
+        // Search backwards for header signature
+        bool found = false;
+        for (size_t i = data.size() - sizeof(StegoHeader); i > 0; i--) {
+            vector<unsigned char> potentialHeader(data.begin() + i, 
+                                                  data.begin() + i + sizeof(StegoHeader));
+            StegoHeader header = deserializeHeader(potentialHeader);
             
-            if (sig == SIGNATURE) {
-                sigPos = i;
+            if (header.magic == Config::MAGIC_SIGNATURE && header.validate()) {
+                headerOffset = i;
                 found = true;
                 break;
             }
         }
         
         if (!found) {
-            throw SteganographyException("No hidden data found in document");
+            throw InvalidFormatException("No hidden data found in file");
         }
         
-        // Extract data size
-        uint32_t dataSize = 0;
-        for (int i = 0; i < 4; i++) {
-            dataSize = (dataSize << 8) | document[sigPos + 4 + i];
+        vector<unsigned char> headerData(data.begin() + headerOffset,
+                                        data.begin() + headerOffset + sizeof(StegoHeader));
+        StegoHeader header = deserializeHeader(headerData);
+        
+        if (!header.validate()) {
+            throw InvalidFormatException("Invalid or corrupted header");
         }
         
-        if (dataSize == 0 || sigPos + 8 + dataSize > document.size()) {
-            throw SteganographyException("Invalid data size detected");
+        cout << "      ✓ Hidden data located" << endl;
+        cout << "      • Original filename: " << header.filename << endl;
+        cout << "      • Hidden file size: " 
+             << Utils::formatBytes(header.hiddenFileSize) << "\n" << endl;
+        
+        // Step 4: Extract hidden data
+        cout << "[4/4] Extracting hidden file..." << endl;
+        size_t hiddenDataOffset = headerOffset + sizeof(StegoHeader);
+        
+        if (hiddenDataOffset + header.hiddenFileSize > data.size()) {
+            throw InvalidFormatException("Corrupted file: size mismatch");
         }
         
-        // Extract data
-        vector<unsigned char> result(dataSize);
-        for (size_t i = 0; i < dataSize; i++) {
-            result[i] = document[sigPos + 8 + i];
-        }
+        vector<unsigned char> hiddenData(data.begin() + hiddenDataOffset,
+                                        data.begin() + hiddenDataOffset + header.hiddenFileSize);
         
-        return result;
+        // Generate output filename
+        string extractedFilename = outputFilePath.empty() ? 
+                                  string("extracted_") + header.filename : 
+                                  outputFilePath;
+        
+        FileIOManager::writeFile(extractedFilename, hiddenData);
+        
+        cout << "      ✓ File extracted successfully" << endl;
+        cout << "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << endl;
+        cout << "  ✓ EXTRACTION COMPLETED SUCCESSFULLY" << endl;
+        cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" << endl;
+        cout << "Extracted file: " << extractedFilename << endl;
+        cout << "File size: " << Utils::formatBytes(hiddenData.size()) << endl;
     }
 };
 
 // ============================================================================
-// Main Steganography Manager Class
+// USER INTERFACE CLASS
 // ============================================================================
-class Steganography {
+class ConsoleInterface {
 private:
-    ISteganography* engine;
+    /**
+     * Displays program header
+     */
+    void displayHeader() {
+        cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+        cout << "║                                                            ║" << endl;
+        cout << "║        UNIVERSAL FILE STEGANOGRAPHY SYSTEM v1.0            ║" << endl;
+        cout << "║                                                            ║" << endl;
+        cout << "║     Hide ANY file type within ANY other file type          ║" << endl;
+        cout << "║                                                            ║" << endl;
+        cout << "╚════════════════════════════════════════════════════════════╝" << endl;
+    }
     
     /**
-     * Selects appropriate steganography engine based on file type
-     * @param containerFile Path to container file
+     * Displays menu
      */
-    void selectEngine(const string& containerFile) {
-        string ext = FileUtils::getExtension(containerFile);
+    void displayMenu() {
+        cout << "\n┌────────────────────────────────────────────────────────────┐" << endl;
+        cout << "│  MAIN MENU                                                 │" << endl;
+        cout << "├────────────────────────────────────────────────────────────┤" << endl;
+        cout << "│  1. Hide file within another file                          │" << endl;
+        cout << "│  2. Extract hidden file                                    │" << endl;
+        cout << "│  3. View system information                                │" << endl;
+        cout << "│  4. Exit program                                           │" << endl;
+        cout << "└────────────────────────────────────────────────────────────┘" << endl;
+        cout << "\nEnter your choice (1-4): ";
+    }
+    
+    /**
+     * Gets user input with prompt
+     */
+    string getInput(const string& prompt) {
+        cout << prompt;
+        string input;
+        getline(cin, input);
+        return input;
+    }
+    
+    /**
+     * Handles file hiding operation
+     */
+    void handleHideFile() {
+        cout << "\n" << string(60, '=') << endl;
+        cout << "  HIDE FILE OPERATION" << endl;
+        cout << string(60, '=') << "\n" << endl;
+        cout << string(60, '=') << "\n" << endl;
         
-        if (ext == "bmp") {
-            engine = new ImageSteganography();
-        } else if (ext == "pdf" || ext == "docx") {
-            engine = new DocumentSteganography();
-        } else {
-            throw SteganographyException("Unsupported file format: " + ext + 
-                                        ". Supported: BMP, PDF, DOCX");
+        string hiddenFile = getInput("Enter the path of the file to hide: ");
+        string hostFile = getInput("Enter the path of the host file: ");
+        string outputFile = getInput("Enter the output file path: ");
+        
+        if (outputFile.empty()) {
+            outputFile = "stego_" + Utils::extractFilename(hostFile);
+            cout << "\nUsing default output filename: " << outputFile << endl;
         }
+        
+        UniversalSteganography stego(hiddenFile, hostFile, outputFile);
+        stego.hideFile();
+    }
+    
+    /**
+     * Handles file extraction operation
+     */
+    void handleExtractFile() {
+        cout << "\n" << string(60, '=') << endl;
+        cout << "  EXTRACT FILE OPERATION" << endl;
+        cout << string(60, '=') << "\n" << endl;
+        cout << string(60, '=') << "\n" << endl;
+        
+        string stegoFile = getInput("Enter the path of the stego file: ");
+        string outputFile = getInput("Enter output path (press Enter for auto): ");
+        
+        UniversalSteganography stego("", stegoFile, outputFile);
+        stego.extractFile();
+    }
+    
+    /**
+     * Displays system information
+     */
+    void displaySystemInfo() {
+        cout << "\n" << string(60, '=') << endl;
+        cout << "  SYSTEM INFORMATION" << endl;
+        cout << string(60, '=') << "\n" << endl;
+        cout << string(60, '=') << "\n" << endl;
+        
+        cout << "Configuration Settings:" << endl;
+        cout << "  • Maximum hidden size ratio: " 
+             << (Config::MAX_HIDDEN_SIZE_RATIO * 100) << "%" << endl;
+        cout << "  • Minimum host file size: " 
+             << Utils::formatBytes(Config::MIN_HOST_SIZE) << endl;
+        cout << "  • Magic signature: 0x" << hex << uppercase 
+             << Config::MAGIC_SIGNATURE << dec << endl;
+        cout << "  • Version: " << Config::VERSION << endl;
+        
+        cout << "\nSupported Operations:" << endl;
+        cout << "  • Hide: ANY file type → ANY host file type" << endl;
+        cout << "  • Extract: Retrieve hidden files from stego files" << endl;
+        
+        cout << "\nFeatures:" << endl;
+        cout << "  • Universal format support" << endl;
+        cout << "  • Automatic size validation" << endl;
+        cout << "  • Data integrity checking" << endl;
+        cout << "  • Original filename preservation" << endl;
+        cout << "  • Robust error handling" << endl;
     }
 
 public:
-    Steganography() : engine(nullptr) {}
-    
-    ~Steganography() {
-        delete engine;
-    }
-    
     /**
-     * Hides text in container file
-     * @param text Text to hide
-     * @param containerFile Path to container file
-     * @param outputFile Output file path
+     * Main program loop
      */
-    void hideText(const string& text, const string& containerFile, 
-                  const string& outputFile) {
-        selectEngine(containerFile);
+    void run() {
+        displayHeader();
         
-        vector<unsigned char> data(text.begin(), text.end());
-        engine->hideData(data, containerFile, outputFile);
-        
-        cout << "✓ Successfully hidden " << text.length() 
-             << " characters in " << outputFile << endl;
-    }
-    
-    /**
-     * Hides image file in container file
-     * @param imageFile Path to image to hide
-     * @param containerFile Path to container file
-     * @param outputFile Output file path
-     */
-    void hideImage(const string& imageFile, const string& containerFile, 
-                   const string& outputFile) {
-        selectEngine(containerFile);
-        
-        vector<unsigned char> data = FileUtils::readFile(imageFile);
-        engine->hideData(data, containerFile, outputFile);
-        
-        cout << "✓ Successfully hidden image (" << data.size() 
-             << " bytes) in " << outputFile << endl;
-    }
-    
-    /**
-     * Reveals hidden text from container file
-     * @param containerFile Path to container file
-     * @return Extracted text
-     */
-    string revealText(const string& containerFile) {
-        selectEngine(containerFile);
-        
-        vector<unsigned char> data = engine->revealData(containerFile);
-        string text(data.begin(), data.end());
-        
-        cout << "✓ Successfully extracted " << text.length() 
-             << " characters" << endl;
-        return text;
-    }
-    
-    /**
-     * Reveals hidden data and saves to file
-     * @param containerFile Path to container file
-     * @param outputFile Output file path
-     */
-    void revealToFile(const string& containerFile, const string& outputFile) {
-        selectEngine(containerFile);
-        
-        vector<unsigned char> data = engine->revealData(containerFile);
-        FileUtils::writeFile(outputFile, data);
-        
-        cout << "✓ Successfully extracted " << data.size() 
-             << " bytes to " << outputFile << endl;
+        while (true) {
+            try {
+                displayMenu();
+                
+                int choice;
+                cin >> choice;
+                cin.ignore(); // Clear newline
+                
+                switch (choice) {
+                    case 1:
+                        handleHideFile();
+                        break;
+                        
+                    case 2:
+                        handleExtractFile();
+                        break;
+                        
+                    case 3:
+                        displaySystemInfo();
+                        break;
+                        
+                    case 4:
+                        cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+                        cout << "║  Thank you for using Universal Steganography System!      ║" << endl;
+                        cout << "╚════════════════════════════════════════════════════════════╝\n" << endl;
+                        return;
+                        
+                    default:
+                        cout << "\n✗ Invalid choice. Please enter 1-4.\n" << endl;
+                }
+                
+            } catch (const FileSizeException& e) {
+                cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+                cout << "║  FILE SIZE ERROR                                           ║" << endl;
+                cout << "╚════════════════════════════════════════════════════════════╝" << endl;
+                cout << "\n" << e.what() << "\n" << endl;
+                
+            } catch (const FileAccessException& e) {
+                cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+                cout << "║  FILE ACCESS ERROR                                         ║" << endl;
+                cout << "╚════════════════════════════════════════════════════════════╝" << endl;
+                cout << "\n✗ " << e.what() << "\n" << endl;
+                
+            } catch (const InvalidFormatException& e) {
+                cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+                cout << "║  FORMAT ERROR                                              ║" << endl;
+                cout << "╚════════════════════════════════════════════════════════════╝" << endl;
+                cout << "\n✗ " << e.what() << "\n" << endl;
+                
+            } catch (const exception& e) {
+                cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+                cout << "║  UNEXPECTED ERROR                                          ║" << endl;
+                cout << "╚════════════════════════════════════════════════════════════╝" << endl;
+                cout << "\n✗ " << e.what() << "\n" << endl;
+            }
+        }
     }
 };
 
 // ============================================================================
-// Main Function - Interactive Menu
+// MAIN FUNCTION
 // ============================================================================
 int main() {
-    Steganography stego;
-    
-    cout << "============================================" << endl;
-    cout << "   C++ Steganography Program" << endl;
-    cout << "============================================" << endl;
-    cout << "Supported formats: BMP, PDF, DOCX" << endl;
-    cout << endl;
-    
-    while (true) {
-        cout << "\nMenu:" << endl;
-        cout << "1. Hide text in file" << endl;
-        cout << "2. Hide image in file" << endl;
-        cout << "3. Reveal text from file" << endl;
-        cout << "4. Reveal data to file" << endl;
-        cout << "5. Exit" << endl;
-        cout << "\nChoice: ";
+    try {
+        ConsoleInterface interface;
+        interface.run();
         
-        int choice;
-        cin >> choice;
-        cin.ignore(); // Clear newline
-        
-        try {
-            if (choice == 1) {
-                string text, container, output;
-                
-                cout << "\nEnter text to hide: ";
-                getline(cin, text);
-                
-                cout << "Container file (BMP/PDF/DOCX): ";
-                getline(cin, container);
-                
-                cout << "Output file: ";
-                getline(cin, output);
-                
-                stego.hideText(text, container, output);
-                
-            } else if (choice == 2) {
-                string imageFile, container, output;
-                
-                cout << "\nImage file to hide: ";
-                getline(cin, imageFile);
-                
-                cout << "Container file (BMP/PDF/DOCX): ";
-                getline(cin, container);
-                
-                cout << "Output file: ";
-                getline(cin, output);
-                
-                stego.hideImage(imageFile, container, output);
-                
-            } else if (choice == 3) {
-                string container;
-                
-                cout << "\nContainer file: ";
-                getline(cin, container);
-                
-                string text = stego.revealText(container);
-                cout << "\nExtracted text:\n" << text << endl;
-                
-            } else if (choice == 4) {
-                string container, output;
-                
-                cout << "\nContainer file: ";
-                getline(cin, container);
-                
-                cout << "Output file: ";
-                getline(cin, output);
-                
-                stego.revealToFile(container, output);
-                
-            } else if (choice == 5) {
-                cout << "\nGoodbye!" << endl;
-                break;
-            } else {
-                cout << "Invalid choice!" << endl;
-            }
-            
-        } catch (const SteganographyException& e) {
-            cout << "✗ Error: " << e.what() << endl;
-        } catch (const exception& e) {
-            cout << "✗ Unexpected error: " << e.what() << endl;
-        }
+    } catch (const exception& e) {
+        cerr << "\n✗ Fatal error: " << e.what() << endl;
+        return 1;
     }
     
     return 0;
