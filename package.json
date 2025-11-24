@@ -1,0 +1,23 @@
+{
+  "name": "stegoproto",
+  "version": "1.0.0",
+  "description": "Steganography prototype with C++ backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "steganography",
+    "cryptography"
+  ],
+  "author": "Team StegoProto",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

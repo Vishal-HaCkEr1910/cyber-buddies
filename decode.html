@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StegoProto — Decode</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <div class="container">
+      <header>
+        <div class="brand">
+          <div class="logo">SP</div>
+          <div>
+            <h1>StegoProto</h1>
+            <div class="subtitle">Decode • Extract hidden data</div>
+          </div>
+        </div>
+        <nav>
+          <a href="index.html">Home</a>
+          <a href="encode.html">Encode</a>
+        </nav>
+      </header>
+
+      <section class="card encode-card">
+        <h2>🔓 Decode (Extract)</h2>
+        <p class="muted">Upload a stego image to extract the hidden file.</p>
+
+        <form id="decodeForm" class="encode-form">
+          <div class="field">
+            <label for="stegoImage">Stego Image</label>
+            <input
+              type="file"
+              id="stegoImage"
+              name="stegoImage"
+              accept="image/*"
+              required
+            />
+            <p class="muted helper-text">
+              Select the image containing hidden data (PNG, JPG, BMP)
+            </p>
+          </div>
+
+          <div class="field">
+            <label for="outputName">Output File Name (optional)</label>
+            <input
+              type="text"
+              id="outputName"
+              name="outputName"
+              placeholder="e.g., secret.txt"
+            />
+            <p class="muted helper-text">
+              Enter the full file name including extension (.txt, .zip, .pdf,
+              etc).
+            </p>
+          </div>
+
+          <div class="button-row">
+            <button type="submit" class="btn btn-primary">
+              <span>🔓 Extract & Download</span>
+            </button>
+            <a href="index.html" class="btn btn-ghost">Cancel</a>
+          </div>
+        </form>
+
+        <!-- Loading indicator -->
+        <div id="loading" class="loading hidden">
+          <div class="spinner"></div>
+          <p>Extracting... Please wait</p>
+        </div>
+
+        <!-- Success message -->
+        <div id="result" class="result hidden">
+          <div class="alert alert-success">
+            <strong>✅ Success!</strong>
+            <p id="resultMessage"></p>
+            <button id="downloadBtn" class="btn btn-secondary">
+              Download Extracted File
+            </button>
+          </div>
+        </div>
+
+        <!-- Error message -->
+        <div id="error" class="result hidden">
+          <div class="alert alert-error">
+            <strong>❌ Error!</strong>
+            <p id="errorMessage"></p>
+          </div>
+        </div>
+      </section>
+
+      <footer>IIITU</footer>
+    </div>
+
+    <script src="decode.js"></script>
+  </body>
+</html>

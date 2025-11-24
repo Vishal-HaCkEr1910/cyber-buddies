@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StegoProto — Encode</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">SP</div>
+        <div>
+          <h1>StegoProto</h1>
+          <div class="subtitle">Encode • Embed secret file</div>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="decode.html">Decode</a>
+      </nav>
+    </header>
+
+    <section class="card encode-card">
+      <h2>🔒 Encode (Embed)</h2>
+      <p class="muted">
+        Upload a <strong>cover image</strong> and a <strong>secret file</strong> to hide it inside the image.
+      </p>
+
+      <form id="encodeForm" class="encode-form">
+        <div class="field">
+          <label for="coverImage">Cover Image</label>
+          <input type="file" id="coverImage" name="coverImage" accept="image/*" required />
+          <p class="muted helper-text">
+            The image inside which the secret data will be hidden (PNG, JPG, BMP)
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="secretFile">Secret File</label>
+          <input type="file" id="secretFile" name="secretFile" required />
+          <p class="muted helper-text">
+            Any file: text, image, ZIP, PDF, etc.
+          </p>
+        </div>
+
+        <div class="button-row">
+          <button type="submit" class="btn btn-primary">
+            <span>🔒 Embed Secret File</span>
+          </button>
+          <a href="index.html" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+
+      <!-- Loading indicator -->
+      <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        <p>Processing... Please wait</p>
+      </div>
+
+      <!-- Success message -->
+      <div id="result" class="result hidden">
+        <div class="alert alert-success">
+          <strong>✅ Success!</strong>
+          <p id="resultMessage"></p>
+          <button id="downloadBtn" class="btn btn-secondary">Download Stego Image</button>
+        </div>
+      </div>
+
+      <!-- Error message -->
+      <div id="error" class="result hidden">
+        <div class="alert alert-error">
+          <strong>❌ Error!</strong>
+          <p id="errorMessage"></p>
+        </div>
+      </div>
+    </section>
+
+    <footer>IIITU</footer>
+  </div>
+
+  <script src="encode.js"></script>
+</body>
+</html>

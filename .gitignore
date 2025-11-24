@@ -1,0 +1,27 @@
+# Node modules
+node_modules/
+
+# Uploads and outputs
+uploads/
+output/
+
+# C++ compiled executables
+stego
+stego.exe
+*.o
+*.out
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
