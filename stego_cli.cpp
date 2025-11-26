@@ -63,6 +63,46 @@ namespace Utils
         size_t pos = fullPath.find_last_of("/\\");
         return (pos == string::npos) ? fullPath : fullPath.substr(pos + 1);
     }
+
+    string getExtension(const string &filename)
+    {
+        size_t pos = filename.find_last_of('.');
+        if (pos == string::npos)
+            return "";
+
+        string ext = filename.substr(pos);
+        transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        return ext;
+    }
+
+    string generateOutputFilename(const string &userProvidedPath, const string &originalFilename)
+    {
+        if (userProvidedPath.empty())
+        {
+            // No output path specified, use original filename with prefix
+            return string("extracted_") + originalFilename;
+        }
+
+        // Check if user-provided path already has an extension
+        size_t outputDotPos = userProvidedPath.find_last_of('.');
+        size_t outputSlashPos = userProvidedPath.find_last_of("/\\");
+
+        // Determine if output path has a valid extension
+        bool hasExtension = (outputDotPos != string::npos) &&
+                            (outputSlashPos == string::npos || outputDotPos > outputSlashPos);
+
+        if (hasExtension)
+        {
+            // User provided complete filename with extension
+            return userProvidedPath;
+        }
+        else
+        {
+            // User provided path without extension, append original extension
+            string originalExt = getExtension(originalFilename);
+            return userProvidedPath + originalExt;
+        }
+    }
 }
 
 // ============================================================================
@@ -306,11 +346,14 @@ public:
         output.insert(output.end(), headerData.begin(), headerData.end());
         output.insert(output.end(), hiddenData.begin(), hiddenData.end());
 
+        // Ensure output file has same extension as cover/host file
+        string finalOutputPath = Utils::generateOutputFilename(outputFilePath, Utils::extractFilename(hostFilePath));
+
         // Write output
-        FileIOManager::writeFile(outputFilePath, output);
+        FileIOManager::writeFile(finalOutputPath, output);
 
         cout << "SUCCESS: File encoded successfully" << endl;
-        cout << "Output: " << outputFilePath << endl;
+        cout << "Output: " << finalOutputPath << endl;
         cout << "Size: " << Utils::formatBytes(output.size()) << endl;
     }
 
@@ -371,8 +414,8 @@ public:
         vector<unsigned char> hiddenData(data.begin() + hiddenDataOffset,
                                          data.begin() + hiddenDataOffset + header.hiddenFileSize);
 
-        // Generate output filename
-        string extractedFilename = outputFilePath.empty() ? string("extracted_") + header.filename : outputFilePath;
+        // Generate output filename with proper extension preservation
+        string extractedFilename = Utils::generateOutputFilename(outputFilePath, header.filename);
 
         FileIOManager::writeFile(extractedFilename, hiddenData);
 

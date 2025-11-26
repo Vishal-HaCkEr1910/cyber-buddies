@@ -53,7 +53,10 @@ app.post('/api/encode', upload.fields([
 
     const coverImage = req.files['coverImage'][0].path;
     const secretFile = req.files['secretFile'][0].path;
-    const outputImage = `./output/stego-${Date.now()}.png`;
+    
+    // Get the extension from the cover file to preserve format
+    const coverExtension = path.extname(req.files['coverImage'][0].originalname);
+    const outputImage = `./output/stego-${Date.now()}${coverExtension}`;
 
     console.log('Encoding files:', { coverImage, secretFile, outputImage });
 
@@ -109,7 +112,8 @@ app.post('/api/decode', upload.single('stegoImage'), (req, res) => {
     }
 
     const stegoImage = req.file.path;
-    const outputFile = `./output/extracted-${Date.now()}.bin`;
+    // Don't specify extension - let C++ program determine it from header
+    const outputFile = `./output/extracted-${Date.now()}`;
 
     console.log('Decoding file:', { stegoImage, outputFile });
 

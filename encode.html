@@ -26,12 +26,12 @@
     <section class="card encode-card">
       <h2>🔒 Encode (Embed)</h2>
       <p class="muted">
-        Upload a <strong>cover image</strong> and a <strong>secret file</strong> to hide it inside the image.
+        Upload a <strong>cover</strong> and a <strong>secret file</strong> to hide it inside the image.
       </p>
 
       <form id="encodeForm" class="encode-form">
         <div class="field">
-          <label for="coverImage">Cover Image</label>
+          <label for="coverImage">Cover</label>
           <input type="file" id="coverImage" name="coverImage" accept="image/*" required />
           <p class="muted helper-text">
             The image inside which the secret data will be hidden (PNG, JPG, BMP)
@@ -65,7 +65,7 @@
         <div class="alert alert-success">
           <strong>✅ Success!</strong>
           <p id="resultMessage"></p>
-          <button id="downloadBtn" class="btn btn-secondary">Download Stego Image</button>
+          <button id="downloadBtn" class="btn btn-secondary">Download Stego file</button>
         </div>
       </div>
 
